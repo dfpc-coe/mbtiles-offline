@@ -1,4 +1,5 @@
 import type { BBox } from 'geojson';
+import EventEmitter from 'node:events';
 import { fetch } from 'undici';
 import { DatabaseSync } from 'node:sqlite';
 import fsp from 'node:fs/promises';
@@ -21,10 +22,15 @@ export interface Config {
     maxzoom: number;
     url: string;
     output: string;
+
+    name?: string;
+    version?: string;
+    description?: string;
+
     concurrency?: number;
 };
 
-export class MBTilesOffline {
+export class MBTilesOffline extends EventEmitter {
     bounds: BBox;
     minzoom: number;
     maxzoom: number;
@@ -32,20 +38,39 @@ export class MBTilesOffline {
     output: string;
     concurrency: number;
 
+    name: string;
+    version: string;
+    description: string;
+
     constructor(options: Config) {
+        super();
+
         this.bounds = options.bounds;
         this.minzoom = options.minzoom;
         this.maxzoom = options.maxzoom;
         this.url = options.url;
         this.output = options.output;
+
+        this.name = options.name || 'Default Tileset';
+        this.version = options.version || '1.0.0';
+        this.description = options.description || '';
+
         this.concurrency = options.concurrency || 10;
 
     }
 
-    static async run(options: Config): Promise<MBTilesOffline> {
-        const run = new MBTilesOffline(options);
+    async start(): Promise<MBTilesOffline> {
+        const db = new DatabaseSync(this.output);
 
-        const db = new DatabaseSync(run.output);
+        let total = 0;
+        let progress = 0;
+        for (let zoom = this.minzoom; zoom <= this.maxzoom; zoom++) {
+            for (const tile of this.coverage(zoom, this.bounds)) {
+                total++;
+            }
+        }
+
+        this.emit('total', total);
 
         await db.exec(`
             CREATE TABLE IF NOT EXISTS metadata (
@@ -71,13 +96,13 @@ export class MBTilesOffline {
             );
         `);
 
-        db.exec(`INSERT INTO metadata (name, value) VALUES ('name', 'Offline Tileset')`);
-        db.exec(`INSERT INTO metadata (name, value) VALUES ('version', '1.0.0')`);
-        db.exec(`INSERT INTO metadata (name, value) VALUES ('description', 'A tileset downloaded for offline use.')`);
+        db.exec(`INSERT INTO metadata (name, value) VALUES ('name', '${this.name}')`);
+        db.exec(`INSERT INTO metadata (name, value) VALUES ('version', '${this.version}')`);
+        db.exec(`INSERT INTO metadata (name, value) VALUES ('description', '${this.description}')`);
         db.exec(`INSERT INTO metadata (name, value) VALUES ('format', 'png')`);
-        db.exec(`INSERT INTO metadata (name, value) VALUES ('minzoom', '${run.minzoom}')`);
-        db.exec(`INSERT INTO metadata (name, value) VALUES ('maxzoom', '${run.maxzoom}')`);
-        db.exec(`INSERT INTO metadata (name, value) VALUES ('bounds', '${run.bounds.join(',')}')`);
+        db.exec(`INSERT INTO metadata (name, value) VALUES ('minzoom', '${this.minzoom}')`);
+        db.exec(`INSERT INTO metadata (name, value) VALUES ('maxzoom', '${this.maxzoom}')`);
+        db.exec(`INSERT INTO metadata (name, value) VALUES ('bounds', '${this.bounds.join(',')}')`);
 
         const check = db.prepare(
             'SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?'
@@ -87,8 +112,8 @@ export class MBTilesOffline {
             'INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)'
         );
 
-        for (let zoom = run.minzoom; zoom <= run.maxzoom; zoom++) {
-            for (const tile of run.coverage(zoom, run.bounds)) {
+        for (let zoom = this.minzoom; zoom <= this.maxzoom; zoom++) {
+            for (const tile of this.coverage(zoom, this.bounds)) {
                 try {
                     // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
                     // compared to the ZXY scheme used by most web maps (like OSM).
@@ -96,14 +121,20 @@ export class MBTilesOffline {
 
                     const checkResult = check.get(tile.z, tile.x, tmsY);
 
-                    if (checkResult && checkResult.tile_data) continue;
+                    if (checkResult && checkResult.tile_data) {
+                        this.emit('progress', ++progress);
+                        continue;
+                    }
 
-                    const data = await run.downloadTile(tile);
+                    const data = await this.downloadTile(tile);
 
                     if (data) {
                         stmt.run(tile.z, tile.x, tmsY, data);
+                        this.emit('progress', ++progress);
                     } else {
-                        throw new Error('Failed to download data for tile: ' + JSON.stringify(tile));
+                        this.emit('progress', ++progress);
+
+                        this.emit('error', new Error('Failed to download data for tile: ' + JSON.stringify(tile)));
                     }
                 } catch (err) {
                     console.error(err);
