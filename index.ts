@@ -4,6 +4,11 @@ import { DatabaseSync } from 'node:sqlite';
 import fsp from 'node:fs/promises';
 import path from 'node:path'
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const MAX_RETRIES = 4; // Per tile
+const INITIAL_DELAY_MS = 250;  // ms
+
 export interface Tile {
     z: number;
     x: number;
@@ -74,29 +79,61 @@ export class MBTilesOffline {
         db.exec(`INSERT INTO metadata (name, value) VALUES ('maxzoom', '${run.maxzoom}')`);
         db.exec(`INSERT INTO metadata (name, value) VALUES ('bounds', '${run.bounds.join(',')}')`);
 
-        console.log('--- MBTiles Downloader ---');
-
-        const processTile = async (tile: Tile) => {
-            const data = await downloadTile(tile);
-
-            if (data) {
-                await insertTile(db, tile, data);
-            }
-
-            completedCount++;
-            const progress = ((completedCount / totalTiles) * 100).toFixed(2);
-            process.stdout.write(`Progress: ${progress}% (${completedCount}/${totalTiles})\r`);
-        };
+        const stmt = db.prepare(
+            'INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)'
+        );
 
         for (let zoom = run.minzoom; zoom <= run.maxzoom; zoom++) {
             for (const tile of run.coverage(zoom, run.bounds)) {
-                console.error(tile);
-                const data = await run.downloadTile(tile);
-                run.insertTile(db, tile, data);
+                try {
+                    const data = await run.downloadTile(tile);
+
+                    if (data) {
+                        run.insertTile(db, tile, data);
+                        // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
+                        // compared to the ZXY scheme used by most web maps (like OSM).
+                        const tmsY = (1 << tile.z) - 1 - tile.y;
+
+                        stmt.run(tile.z, tile.x, tmsY, data);
+                    } else {
+                        throw new Error('Failed to download data for tile: ' + JSON.stringify(tile));
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
             }
         }
 
         db.close();
+    }
+
+    async downloadTile(tile: Tile): Promise<Buffer | null> {
+        const url = this.url.replace('{z}', String(tile.z)).replace('{x}', String(tile.x)).replace('{y}', String(tile.y));
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const res = await fetch(url);
+
+                if (res.ok) return Buffer.from(await res.arrayBuffer());
+
+                if (res.status === 404) {
+                    console.warn(`Tile not found (404), no retry needed: ${url}`);
+                    return null;
+                }
+            } catch (err) {
+                console.error(`Attempt ${attempt} failed for ${url} with error: ${error.message}`);
+            }
+
+            if (attempt === MAX_RETRIES) {
+                break;
+            }
+
+            const delay = INITIAL_DELAY_MS * Math.pow(2, attempt - 1);
+
+            await sleep(delay);
+        }
+
+        return null;
     }
 
     *coverage(
@@ -114,24 +151,6 @@ export class MBTilesOffline {
             for (let y = startY; y <= endY; y++) {
                 yield { z: zoom, x, y };
             }
-        }
-    }
-
-    async downloadTile(tile: Tile): Promise<Buffer | null> {
-        try {
-            const url = this.url.replace('{z}', String(tile.z)).replace('{x}', String(tile.x)).replace('{y}', String(tile.y));
-
-            const res = await fetch(url)
-
-            return res.ok ? Buffer.from(await res.arrayBuffer()) : null;
-        } catch (error: any) {
-            if (error.response && error.response.status === 404) {
-                console.warn(`Tile not found (404): ${url}`);
-            } else {
-                console.error(`Error downloading tile ${url}:`, error.message);
-            }
-
-            return null;
         }
     }
 
@@ -171,14 +190,5 @@ export class MBTilesOffline {
      * @param data - The tile image data as a Buffer.
      */
     async insertTile(db: sqlite3.Database, tile: Tile, data: Buffer): Promise<void> {
-        // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
-        // compared to the ZXY scheme used by most web maps (like OSM).
-        const tmsY = (1 << tile.z) - 1 - tile.y;
-
-        const stmt = db.prepare(
-            'INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)'
-        );
-
-        stmt.run(tile.z, tile.x, tmsY, data);
     }
 }
