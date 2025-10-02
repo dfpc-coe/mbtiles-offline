@@ -142,10 +142,10 @@ export class MBTilesOffline extends EventEmitter {
                             this.emit('progress', ++progress);
                         } else {
                             this.emit('progress', ++progress);
-                            this.emit('error', new Error('Failed to download data for tile: ' + JSON.stringify(tile)));
+                            throw new Error('Failed to download data for tile: ' + JSON.stringify(tile));
                         }
                     } catch (err) {
-                        console.error(err);
+                        this.emit('error', err);
                     }
                 });
         }
