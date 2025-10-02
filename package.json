@@ -1,0 +1,65 @@
+{
+    "name": "@tak-ps/mbtiles-offline",
+    "type": "module",
+    "version": "1.0.0",
+    "description": "Download Web maps into an offline MBTiles",
+    "author": "Nick Ingalls <nick@ingalls.ca>",
+    "main": "dist/index.js",
+    "types": "index.ts",
+    "bin": {
+        "mbtiles": "./cli.ts"
+    },
+    "engines": {
+        "node": ">= 22"
+    },
+    "scripts": {
+        "test": "c8 --reporter=lcov ts-node-test test/",
+        "lint": "eslint *.ts test/ lib/",
+        "doc": "typedoc index.ts",
+        "build": "tsc --build",
+        "pretest": "npm run lint"
+    },
+    "dependencies": {
+        "@openaddresses/batch-error": "^2.12.0",
+        "@sinclair/typebox": "^0.34.41",
+        "@types/geojson": "^7946.0.16",
+        "undici": "^7.8.0"
+    },
+    "devDependencies": {
+        "@inquirer/prompts": "^7.5.1",
+        "@types/minimist": "^1.2.5",
+        "@types/node": "^24.0.0",
+        "@types/pem": "^1.14.4",
+        "@types/tape": "^5.6.0",
+        "c8": "^10.1.3",
+        "eslint": "^9.0.0",
+        "minimist": "^1.2.8",
+        "tape": "^5.6.1",
+        "ts-node-test": "^0.4.0",
+        "tsx": "^4.19.4",
+        "typedoc": "^0.28.1",
+        "typescript": "^5.7.0",
+        "typescript-eslint": "^8.0.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/dfpc-coe/mbtiles-offline.git"
+    },
+    "keywords": [
+        "tak",
+        "atak",
+        "cloudtak",
+        "wintak",
+        "cot",
+        "cusor",
+        "target",
+        "map",
+        "mbtiles",
+        "offline"
+    ],
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/dfpc-coe/mbtiles-offline/issues"
+    },
+    "homepage": "https://github.com/dfpc-coe/mbtiles-offline#readme"
+}
