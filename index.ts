@@ -79,6 +79,10 @@ export class MBTilesOffline {
         db.exec(`INSERT INTO metadata (name, value) VALUES ('maxzoom', '${run.maxzoom}')`);
         db.exec(`INSERT INTO metadata (name, value) VALUES ('bounds', '${run.bounds.join(',')}')`);
 
+        const check = db.prepare(
+            'SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?'
+        );
+
         const stmt = db.prepare(
             'INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)'
         );
@@ -86,14 +90,17 @@ export class MBTilesOffline {
         for (let zoom = run.minzoom; zoom <= run.maxzoom; zoom++) {
             for (const tile of run.coverage(zoom, run.bounds)) {
                 try {
+                    // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
+                    // compared to the ZXY scheme used by most web maps (like OSM).
+                    const tmsY = (1 << tile.z) - 1 - tile.y;
+
+                    const checkResult = check.get(tile.z, tile.x, tmsY);
+
+                    if (checkResult && checkResult.tile_data) continue;
+
                     const data = await run.downloadTile(tile);
 
                     if (data) {
-                        run.insertTile(db, tile, data);
-                        // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
-                        // compared to the ZXY scheme used by most web maps (like OSM).
-                        const tmsY = (1 << tile.z) - 1 - tile.y;
-
                         stmt.run(tile.z, tile.x, tmsY, data);
                     } else {
                         throw new Error('Failed to download data for tile: ' + JSON.stringify(tile));
@@ -181,14 +188,5 @@ export class MBTilesOffline {
                 2) *
                 Math.pow(2, zoom)
         );
-    }
-
-    /**
-     * Inserts a tile into the database.
-     * @param db - The sqlite3 database instance.
-     * @param tile - The tile object (z, x, y).
-     * @param data - The tile image data as a Buffer.
-     */
-    async insertTile(db: sqlite3.Database, tile: Tile, data: Buffer): Promise<void> {
     }
 }
