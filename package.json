@@ -22,6 +22,7 @@
     "dependencies": {
         "@openaddresses/batch-error": "^2.12.0",
         "@sinclair/typebox": "^0.34.41",
+        "@supercharge/promise-pool": "^3.2.0",
         "@types/geojson": "^7946.0.16",
         "ts-progress": "^0.1.9",
         "undici": "^7.8.0"

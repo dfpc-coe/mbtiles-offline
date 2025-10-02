@@ -1,4 +1,5 @@
 import type { BBox } from 'geojson';
+import { PromisePool } from '@supercharge/promise-pool'
 import EventEmitter from 'node:events';
 import { fetch } from 'undici';
 import { DatabaseSync } from 'node:sqlite';
@@ -112,34 +113,41 @@ export class MBTilesOffline extends EventEmitter {
             'INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)'
         );
 
+        const pool = new Array();
+
+
+
+
         for (let zoom = this.minzoom; zoom <= this.maxzoom; zoom++) {
-            for (const tile of this.coverage(zoom, this.bounds)) {
-                try {
-                    // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
-                    // compared to the ZXY scheme used by most web maps (like OSM).
-                    const tmsY = (1 << tile.z) - 1 - tile.y;
+            await PromisePool
+                .withConcurrency(this.concurrency)
+                .for(this.coverage(zoom, this.bounds))
+                .process(async (tile) => {
+                    try {
+                        // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
+                        // compared to the ZXY scheme used by most web maps (like OSM).
+                        const tmsY = (1 << tile.z) - 1 - tile.y;
 
-                    const checkResult = check.get(tile.z, tile.x, tmsY);
+                        const checkResult = check.get(tile.z, tile.x, tmsY);
 
-                    if (checkResult && checkResult.tile_data) {
-                        this.emit('progress', ++progress);
-                        continue;
+                        if (checkResult && checkResult.tile_data) {
+                            this.emit('progress', ++progress);
+                            return;
+                        }
+
+                        const data = await this.downloadTile(tile);
+
+                        if (data) {
+                            stmt.run(tile.z, tile.x, tmsY, data);
+                            this.emit('progress', ++progress);
+                        } else {
+                            this.emit('progress', ++progress);
+                            this.emit('error', new Error('Failed to download data for tile: ' + JSON.stringify(tile)));
+                        }
+                    } catch (err) {
+                        console.error(err);
                     }
-
-                    const data = await this.downloadTile(tile);
-
-                    if (data) {
-                        stmt.run(tile.z, tile.x, tmsY, data);
-                        this.emit('progress', ++progress);
-                    } else {
-                        this.emit('progress', ++progress);
-
-                        this.emit('error', new Error('Failed to download data for tile: ' + JSON.stringify(tile)));
-                    }
-                } catch (err) {
-                    console.error(err);
-                }
-            }
+                });
         }
 
         db.close();
