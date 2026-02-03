@@ -1,7 +1,7 @@
 {
     "name": "@tak-ps/mbtiles-offline",
     "type": "module",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Download Web maps into an offline MBTiles",
     "author": "Nick Ingalls <nick@ingalls.ca>",
     "main": "dist/index.js",
