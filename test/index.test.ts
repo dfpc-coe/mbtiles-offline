@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { MBTilesOffline } from '../index.js';
 
-test('MBTilesOffline - Instantiation', async (t) => {
+test('MBTilesOffline - Instantiation', async () => {
     const config = {
         name: 'Test',
         version: '1.0.0',
@@ -20,7 +20,7 @@ test('MBTilesOffline - Instantiation', async (t) => {
     assert.equal(mbtiles.concurrency, 10); // Default check
 });
 
-test('MBTilesOffline - Coordinate Conversions', async (t) => {
+test('MBTilesOffline - Coordinate Conversions', async () => {
     const config = {
         name: 'Test',
         version: '1.0.0',
@@ -44,7 +44,7 @@ test('MBTilesOffline - Coordinate Conversions', async (t) => {
     assert.ok(y >= 0);
 });
 
-test('MBTilesOffline - Coverage', async (t) => {
+test('MBTilesOffline - Coverage', async () => {
     const config = {
         name: 'Test',
         version: '1.0.0',
