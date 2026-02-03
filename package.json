@@ -1,13 +1,13 @@
 {
     "name": "@tak-ps/mbtiles-offline",
     "type": "module",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Download Web maps into an offline MBTiles",
     "author": "Nick Ingalls <nick@ingalls.ca>",
     "main": "dist/index.js",
     "types": "index.ts",
     "bin": {
-        "mbtiles": "./cli.ts"
+        "mbtiles-offline": "./cli.ts"
     },
     "engines": {
         "node": ">= 22"
@@ -28,9 +28,9 @@
         "undici": "^7.8.0"
     },
     "devDependencies": {
-        "@inquirer/prompts": "^7.5.1",
+        "@inquirer/prompts": "^8.2.0",
         "@types/minimist": "^1.2.5",
-        "@types/node": "^24.0.0",
+        "@types/node": "^25.0.0",
         "@types/pem": "^1.14.4",
         "@types/tape": "^5.6.0",
         "c8": "^10.1.3",
