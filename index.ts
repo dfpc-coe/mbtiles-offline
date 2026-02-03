@@ -58,7 +58,7 @@ export class MBTilesOffline extends EventEmitter {
 
     }
 
-    async start(): Promise<MBTilesOffline> {
+    async start(): Promise<void> {
         const db = new DatabaseSync(this.output);
 
         let total = 0;

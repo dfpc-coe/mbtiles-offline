@@ -12,6 +12,10 @@
 
 ### Pending Fixed
 
+### v1.2.1 - 2026-02-03
+
+- :rocket: Include TSConfig
+
 ### v1.2.0 - 2026-02-03
 
 - :tada: Introduce a CLI
