@@ -12,6 +12,10 @@
 
 ### Pending Fixed
 
+### v1.2.2 - 2026-02-03
+
+- :rocket: Bump GH Pages
+
 ### v1.2.1 - 2026-02-03
 
 - :rocket: Include TSConfig
