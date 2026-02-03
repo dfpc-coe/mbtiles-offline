@@ -4,6 +4,7 @@ import { input, number } from '@inquirer/prompts';
 import minimist from 'minimist';
 
 const args = minimist(process.argv.slice(2));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const config: any = { ...args };
 
 if (!config.name) {
@@ -97,6 +98,7 @@ const download = new MBTilesOffline({
     concurrency: Number(config.concurrency),
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let progressBar: any;
 let currentTotal: number;
 let currentProgress: number;

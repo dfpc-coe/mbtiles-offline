@@ -3,8 +3,6 @@ import { PromisePool } from '@supercharge/promise-pool'
 import EventEmitter from 'node:events';
 import { fetch } from 'undici';
 import { DatabaseSync } from 'node:sqlite';
-import fsp from 'node:fs/promises';
-import path from 'node:path'
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -65,10 +63,15 @@ export class MBTilesOffline extends EventEmitter {
 
         let total = 0;
         let progress = 0;
+
         for (let zoom = this.minzoom; zoom <= this.maxzoom; zoom++) {
-            for (const tile of this.coverage(zoom, this.bounds)) {
-                total++;
-            }
+            const [minLon, minLat, maxLon, maxLat] = this.bounds;
+            const startX = this.lonToTileX(minLon, zoom);
+            const endX = this.lonToTileX(maxLon, zoom);
+            const startY = this.latToTileY(maxLat, zoom);
+            const endY = this.latToTileY(minLat, zoom);
+
+            total += Math.abs((endX - startX + 1) * (endY - startY + 1));
         }
 
         this.emit('total', total);
@@ -112,11 +115,6 @@ export class MBTilesOffline extends EventEmitter {
         const stmt = db.prepare(
             'INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)'
         );
-
-        const pool = new Array();
-
-
-
 
         for (let zoom = this.minzoom; zoom <= this.maxzoom; zoom++) {
             await PromisePool
@@ -166,8 +164,9 @@ export class MBTilesOffline extends EventEmitter {
                     console.warn(`Tile not found (404), no retry needed: ${url}`);
                     return null;
                 }
-            } catch (err) {
-                console.error(`Attempt ${attempt} failed for ${url} with error: ${error.message}`);
+            } catch (error: unknown) {
+                const msg = error instanceof Error ? error.message : String(error);
+                console.error(`Attempt ${attempt} failed for ${url} with error: ${msg}`);
             }
 
             if (attempt === MAX_RETRIES) {
