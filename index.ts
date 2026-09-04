@@ -1,7 +1,6 @@
 import type { BBox } from 'geojson';
 import { PromisePool } from '@supercharge/promise-pool'
 import EventEmitter from 'node:events';
-import { fetch } from 'undici';
 import { DatabaseSync } from 'node:sqlite';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
