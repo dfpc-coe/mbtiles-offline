@@ -2,16 +2,25 @@ import type { BBox } from 'geojson';
 import { PromisePool } from '@supercharge/promise-pool'
 import EventEmitter from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
+import sharp from 'sharp';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const MAX_RETRIES = 4; // Per tile
 const INITIAL_DELAY_MS = 250;  // ms
+const MAX_LAT = 85.05112878;
 
 export interface Tile {
     z: number;
     x: number;
     y: number;
+}
+
+export interface PixelRect {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
 }
 
 export interface Config {
@@ -26,6 +35,9 @@ export interface Config {
     description?: string;
 
     concurrency?: number;
+
+    /** Make pixels outside of bounds transparent (Default: true) */
+    clip?: boolean;
 };
 
 export class MBTilesOffline extends EventEmitter {
@@ -35,6 +47,7 @@ export class MBTilesOffline extends EventEmitter {
     url: string;
     output: string;
     concurrency: number;
+    clip: boolean;
 
     name: string;
     version: string;
@@ -54,7 +67,7 @@ export class MBTilesOffline extends EventEmitter {
         this.description = options.description || '';
 
         this.concurrency = options.concurrency || 10;
-
+        this.clip = options.clip !== false;
     }
 
     async start(): Promise<void> {
@@ -132,7 +145,11 @@ export class MBTilesOffline extends EventEmitter {
                             return;
                         }
 
-                        const data = await this.downloadTile(tile);
+                        let data = await this.downloadTile(tile);
+
+                        if (data && this.clip) {
+                            data = await this.clipTile(tile, data);
+                        }
 
                         if (data) {
                             stmt.run(tile.z, tile.x, tmsY, data);
@@ -180,6 +197,71 @@ export class MBTilesOffline extends EventEmitter {
         return null;
     }
 
+    /**
+     * Make any portion of the tile image that falls outside of the configured
+     * bounds transparent so partial edge tiles only display the requested area.
+     * Tiles fully inside the bounds are returned untouched.
+     */
+    async clipTile(tile: Tile, data: Buffer): Promise<Buffer> {
+        const image = sharp(data);
+        const meta = await image.metadata();
+        const size = meta.width;
+
+        if (!size || !meta.height) return data;
+
+        const rect = this.clipRect(tile, this.bounds, size);
+
+        if (!rect) {
+            return await sharp({
+                create: {
+                    width: size,
+                    height: meta.height,
+                    channels: 4,
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }
+                }
+            }).png().toBuffer();
+        }
+
+        if (rect.left === 0 && rect.top === 0 && rect.width === size && rect.height === meta.height) {
+            return data;
+        }
+
+        return await image
+            .ensureAlpha()
+            .extract(rect)
+            .extend({
+                left: rect.left,
+                top: rect.top,
+                right: size - rect.left - rect.width,
+                bottom: meta.height - rect.top - rect.height,
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+            })
+            .png()
+            .toBuffer();
+    }
+
+    /**
+     * Pixel rectangle within a tile of the given size that intersects bounds
+     * @returns The intersecting rectangle or null if the tile is entirely outside bounds
+     */
+    clipRect(tile: Tile, bounds: BBox, size: number): PixelRect | null {
+        const [minLon, minLat, maxLon, maxLat] = bounds;
+
+        const left = Math.max(0, Math.floor((this.lonToX(minLon, tile.z) - tile.x) * size));
+        const right = Math.min(size, Math.ceil((this.lonToX(maxLon, tile.z) - tile.x) * size));
+        const top = Math.max(0, Math.floor((this.latToY(maxLat, tile.z) - tile.y) * size));
+        const bottom = Math.min(size, Math.ceil((this.latToY(minLat, tile.z) - tile.y) * size));
+
+        if (right <= left || bottom <= top) return null;
+
+        return {
+            left,
+            top,
+            width: right - left,
+            height: bottom - top
+        };
+    }
+
     *coverage(
         zoom: number,
         bounds: BBox
@@ -205,7 +287,22 @@ export class MBTilesOffline extends EventEmitter {
      * @returns Tile X coordinate.
      */
     lonToTileX(lon: number, zoom: number): number {
-        return Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
+        return Math.floor(this.lonToX(lon, zoom));
+    }
+
+    /**
+     * Converts longitude to a fractional tile X coordinate.
+     */
+    lonToX(lon: number, zoom: number): number {
+        return ((lon + 180) / 360) * Math.pow(2, zoom);
+    }
+
+    /**
+     * Converts latitude to a fractional tile Y coordinate.
+     */
+    latToY(lat: number, zoom: number): number {
+        const rad = (Math.max(-MAX_LAT, Math.min(MAX_LAT, lat)) * Math.PI) / 180;
+        return ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * Math.pow(2, zoom);
     }
 
     /**
@@ -215,15 +312,6 @@ export class MBTilesOffline extends EventEmitter {
      * @returns Tile Y coordinate.
      */
     latToTileY(lat: number, zoom: number): number {
-        return Math.floor(
-            ((1 -
-              Math.log(
-                  Math.tan((lat * Math.PI) / 180) +
-                      1 / Math.cos((lat * Math.PI) / 180)
-            ) /
-                Math.PI) /
-                2) *
-                Math.pow(2, zoom)
-        );
+        return Math.floor(this.latToY(lat, zoom));
     }
 }

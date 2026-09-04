@@ -34,6 +34,10 @@ download.on('error', (err) => {
 await download.start();
 ```
 
+By default tiles that only partially overlap `bounds` are clipped: the portion of the image outside the
+bounds is made transparent and the tile is re-encoded as PNG. Pass `clip: false` (or `--no-clip` on the CLI)
+to store tiles exactly as served.
+
 ## Configuration
 
 The `MBTilesOffline` constructor accepts the following options:
@@ -48,4 +52,5 @@ The `MBTilesOffline` constructor accepts the following options:
 | `name` | `string` | Name of the tileset (metadata) |
 | `description` | `string` | Description of the tileset (metadata) |
 | `version` | `string` | Version of the tileset (metadata) |
-| `concurrency` | `number` | Number of concurrent requests (Default: `Infinity`) |
+| `concurrency` | `number` | Number of concurrent requests (Default: `10`) |
+| `clip` | `boolean` | Make pixels outside of `bounds` transparent so edge tiles at every zoom only show the requested area (Default: `true`) |

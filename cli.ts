@@ -96,6 +96,7 @@ const download = new MBTilesOffline({
     maxzoom: Number(config.maxzoom),
     output: config.output,
     concurrency: Number(config.concurrency),
+    clip: config.clip !== false
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
