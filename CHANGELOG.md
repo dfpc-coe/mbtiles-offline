@@ -12,6 +12,8 @@
 
 ### Pending Fixed
 
+### v1.3.0 - 2026-09-04
+
 - :tada: Clip tiles to the given bounds by default, add `clip` option and `--no-clip` CLI flag
 
 ### v1.2.2 - 2026-02-03
