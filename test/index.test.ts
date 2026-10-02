@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import sharp from 'sharp';
-import { MBTilesOffline } from '../index.js';
+import { MBTilesOffline, validateUrl } from '../index.js';
 
 test('MBTilesOffline - Instantiation', async () => {
     const config = {
@@ -29,7 +29,7 @@ test('MBTilesOffline - Coordinate Conversions', async () => {
         bounds: [-180, -90, 180, 90] as [number, number, number, number],
         minzoom: 0,
         maxzoom: 0,
-        url: 'http://localhost',
+        url: 'http://localhost/{z}/{x}/{y}.png',
         output: '/tmp/test.mbtiles'
     };
     const mbtiles = new MBTilesOffline(config);
@@ -53,7 +53,7 @@ test('MBTilesOffline - Coverage', async () => {
         bounds: [-180, -90, 180, 90] as [number, number, number, number],
         minzoom: 0,
         maxzoom: 0,
-        url: 'http://localhost',
+        url: 'http://localhost/{z}/{x}/{y}.png',
         output: '/tmp/test.mbtiles'
     };
     const mbtiles = new MBTilesOffline(config);
@@ -72,7 +72,7 @@ test('MBTilesOffline - clipRect', async () => {
         bounds: [-90, 0, 90, 66.51326] as [number, number, number, number],
         minzoom: 0,
         maxzoom: 2,
-        url: 'http://localhost',
+        url: 'http://localhost/{z}/{x}/{y}.png',
         output: '/tmp/test.mbtiles'
     });
 
@@ -101,7 +101,7 @@ test('MBTilesOffline - clipTile', async () => {
         bounds: [-90, 0, 90, 66.51326] as [number, number, number, number],
         minzoom: 0,
         maxzoom: 2,
-        url: 'http://localhost',
+        url: 'http://localhost/{z}/{x}/{y}.png',
         output: '/tmp/test.mbtiles'
     });
 
@@ -135,4 +135,29 @@ test('MBTilesOffline - clipTile', async () => {
     const raw = await sharp(empty).raw().toBuffer({ resolveWithObject: true });
     assert.equal(raw.info.channels, 4);
     assert.ok(raw.data.every((v) => v === 0));
+});
+
+test('validateUrl - Valid Templates', () => {
+    assert.doesNotThrow(() => validateUrl('http://localhost:3000/{z}/{x}/{y}.png'));
+    assert.doesNotThrow(() => validateUrl('https://example.com/tile/{z}/{y}/{x}'));
+    assert.doesNotThrow(() => validateUrl('https://example.com/tiles/{z}/{x}/{y}?token=abc'));
+});
+
+test('validateUrl - Invalid Templates', () => {
+    assert.throws(() => validateUrl(''), /Tile URL template is required/);
+    assert.throws(() => validateUrl('https://example.com/tiles'), /missing the \{z\}, \{x\}, \{y\} placeholders/);
+    assert.throws(() => validateUrl('https://example.com/{z}/{x}'), /missing the \{y\} placeholder:/);
+    assert.throws(() => validateUrl('https://example.com/{z}/{x}/{y}/{y}'), /contains the \{y\} placeholder more than once/);
+    assert.throws(() => validateUrl('example.com/{z}/{x}/{y}'), /not a valid URL/);
+    assert.throws(() => validateUrl('ftp://example.com/{z}/{x}/{y}'), /must use http or https/);
+});
+
+test('MBTilesOffline - Constructor rejects invalid URL', () => {
+    assert.throws(() => new MBTilesOffline({
+        bounds: [-180, -90, 180, 90],
+        minzoom: 0,
+        maxzoom: 0,
+        url: 'https://example.com/{x}/{y}',
+        output: '/tmp/test.mbtiles'
+    }), /missing the \{z\} placeholder/);
 });

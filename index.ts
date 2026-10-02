@@ -40,6 +40,40 @@ export interface Config {
     clip?: boolean;
 };
 
+/**
+ * Ensure a tile URL template is an http(s) URL containing exactly one each of {z}, {x} and {y}
+ *
+ * @throws Error with a human readable message if the template is invalid
+ */
+export function validateUrl(url: string): void {
+    if (typeof url !== 'string' || !url.length) {
+        throw new Error('Tile URL template is required');
+    }
+
+    const placeholders = ['{z}', '{x}', '{y}'];
+
+    const missing = placeholders.filter((p) => !url.includes(p));
+    if (missing.length) {
+        throw new Error(`Tile URL template is missing the ${missing.join(', ')} placeholder${missing.length > 1 ? 's' : ''}: "${url}" - expected a URL like https://example.com/tiles/{z}/{x}/{y}.png`);
+    }
+
+    const duplicates = placeholders.filter((p) => url.split(p).length > 2);
+    if (duplicates.length) {
+        throw new Error(`Tile URL template contains the ${duplicates.join(', ')} placeholder${duplicates.length > 1 ? 's' : ''} more than once: "${url}"`);
+    }
+
+    let parsed: URL;
+    try {
+        parsed = new URL(url);
+    } catch {
+        throw new Error(`Tile URL template is not a valid URL: "${url}"`);
+    }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error(`Tile URL template must use http or https: "${url}"`);
+    }
+}
+
 export class MBTilesOffline extends EventEmitter {
     bounds: BBox;
     minzoom: number;
@@ -55,6 +89,8 @@ export class MBTilesOffline extends EventEmitter {
 
     constructor(options: Config) {
         super();
+
+        validateUrl(options.url);
 
         this.bounds = options.bounds;
         this.minzoom = options.minzoom;

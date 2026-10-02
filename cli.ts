@@ -1,4 +1,4 @@
-import { MBTilesOffline } from './index.js';
+import { MBTilesOffline, validateUrl } from './index.js';
 import Progress from 'ts-progress';
 import { input, number } from '@inquirer/prompts';
 import minimist from 'minimist';
@@ -31,8 +31,22 @@ if (!config.version) {
 if (!config.url) {
     config.url = await input({
         message: 'Tile URL Template:',
-        validate: (input: string) => input.length > 0 ? true : 'URL is required'
+        validate: (input: string) => {
+            try {
+                validateUrl(input);
+                return true;
+            } catch (err) {
+                return (err as Error).message;
+            }
+        }
     });
+} else {
+    try {
+        validateUrl(String(config.url));
+    } catch (err) {
+        console.error(`Error: ${(err as Error).message}`);
+        process.exit(1);
+    }
 }
 
 if (!config.output) {
