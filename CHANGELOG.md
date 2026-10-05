@@ -12,6 +12,11 @@
 
 ### Pending Fixed
 
+### v1.4.0 - 2026-10-05
+
+- :arrow_up: Update Core Deps
+- :rocket: Add more verbose URL validity checks
+
 ### v1.3.0 - 2026-09-04
 
 - :tada: Clip tiles to the given bounds by default, add `clip` option and `--no-clip` CLI flag
