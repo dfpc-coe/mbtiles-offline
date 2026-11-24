@@ -18,7 +18,8 @@ test('MBTilesOffline - Instantiation', async () => {
 
     assert.equal(mbtiles.name, 'Test');
     assert.equal(mbtiles.minzoom, 0);
-    assert.equal(mbtiles.concurrency, 10); // Default check
+    // Default check
+    assert.equal(mbtiles.concurrency, 10);
 });
 
 test('MBTilesOffline - Coordinate Conversions', async () => {
@@ -138,18 +139,18 @@ test('MBTilesOffline - clipTile', async () => {
 });
 
 test('validateUrl - Valid Templates', () => {
-    assert.doesNotThrow(() => validateUrl('http://localhost:3000/{z}/{x}/{y}.png'));
-    assert.doesNotThrow(() => validateUrl('https://example.com/tile/{z}/{y}/{x}'));
-    assert.doesNotThrow(() => validateUrl('https://example.com/tiles/{z}/{x}/{y}?token=abc'));
+    assert.doesNotThrow(() => { validateUrl('http://localhost:3000/{z}/{x}/{y}.png'); });
+    assert.doesNotThrow(() => { validateUrl('https://example.com/tile/{z}/{y}/{x}'); });
+    assert.doesNotThrow(() => { validateUrl('https://example.com/tiles/{z}/{x}/{y}?token=abc'); });
 });
 
 test('validateUrl - Invalid Templates', () => {
-    assert.throws(() => validateUrl(''), /Tile URL template is required/);
-    assert.throws(() => validateUrl('https://example.com/tiles'), /missing the \{z\}, \{x\}, \{y\} placeholders/);
-    assert.throws(() => validateUrl('https://example.com/{z}/{x}'), /missing the \{y\} placeholder:/);
-    assert.throws(() => validateUrl('https://example.com/{z}/{x}/{y}/{y}'), /contains the \{y\} placeholder more than once/);
-    assert.throws(() => validateUrl('example.com/{z}/{x}/{y}'), /not a valid URL/);
-    assert.throws(() => validateUrl('ftp://example.com/{z}/{x}/{y}'), /must use http or https/);
+    assert.throws(() => { validateUrl(''); }, /Tile URL template is required/);
+    assert.throws(() => { validateUrl('https://example.com/tiles'); }, /missing the \{z\}, \{x\}, \{y\} placeholders/);
+    assert.throws(() => { validateUrl('https://example.com/{z}/{x}'); }, /missing the \{y\} placeholder:/);
+    assert.throws(() => { validateUrl('https://example.com/{z}/{x}/{y}/{y}'); }, /contains the \{y\} placeholder more than once/);
+    assert.throws(() => { validateUrl('example.com/{z}/{x}/{y}'); }, /not a valid URL/);
+    assert.throws(() => { validateUrl('ftp://example.com/{z}/{x}/{y}'); }, /must use http or https/);
 });
 
 test('MBTilesOffline - Constructor rejects invalid URL', () => {

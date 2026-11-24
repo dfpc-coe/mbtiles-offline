@@ -12,6 +12,13 @@
 
 ### Pending Fixed
 
+### v1.4.1 - 2026-11-24
+
+- :arrow_up: Update all GH Action Dependencies to latest versions
+- :arrow_up: Migrate to Typescript 7.0 for builds
+- :arrow_up: Migrate to OXLint for linting
+- :rocket: Strictly type CLI arguments; `--minzoom 0` no longer prompts
+
 ### v1.4.0 - 2026-10-05
 
 - :arrow_up: Update Core Deps

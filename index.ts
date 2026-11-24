@@ -4,10 +4,15 @@ import EventEmitter from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 import sharp from 'sharp';
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = async (ms: number): Promise<void> => {
+    await new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+    });
+};
 
-const MAX_RETRIES = 4; // Per tile
-const INITIAL_DELAY_MS = 250;  // ms
+// Per tile
+const MAX_RETRIES = 4;
+const INITIAL_DELAY_MS = 250;
 const MAX_LAT = 85.05112878;
 
 export interface Tile {
@@ -46,19 +51,19 @@ export interface Config {
  * @throws Error with a human readable message if the template is invalid
  */
 export function validateUrl(url: string): void {
-    if (typeof url !== 'string' || !url.length) {
+    if (typeof url !== 'string' || url.length === 0) {
         throw new Error('Tile URL template is required');
     }
 
     const placeholders = ['{z}', '{x}', '{y}'];
 
     const missing = placeholders.filter((p) => !url.includes(p));
-    if (missing.length) {
+    if (missing.length > 0) {
         throw new Error(`Tile URL template is missing the ${missing.join(', ')} placeholder${missing.length > 1 ? 's' : ''}: "${url}" - expected a URL like https://example.com/tiles/{z}/{x}/{y}.png`);
     }
 
     const duplicates = placeholders.filter((p) => url.split(p).length > 2);
-    if (duplicates.length) {
+    if (duplicates.length > 0) {
         throw new Error(`Tile URL template contains the ${duplicates.join(', ')} placeholder${duplicates.length > 1 ? 's' : ''} more than once: "${url}"`);
     }
 
@@ -74,6 +79,7 @@ export function validateUrl(url: string): void {
     }
 }
 
+// oxlint-disable-next-line unicorn/prefer-event-target
 export class MBTilesOffline extends EventEmitter {
     bounds: BBox;
     minzoom: number;
@@ -102,7 +108,7 @@ export class MBTilesOffline extends EventEmitter {
         this.version = options.version || '1.0.0';
         this.description = options.description || '';
 
-        this.concurrency = options.concurrency || 10;
+        this.concurrency = options.concurrency !== undefined && options.concurrency > 0 ? options.concurrency : 10;
         this.clip = options.clip !== false;
     }
 
@@ -124,7 +130,7 @@ export class MBTilesOffline extends EventEmitter {
 
         this.emit('total', total);
 
-        await db.exec(`
+        db.exec(`
             CREATE TABLE IF NOT EXISTS metadata (
                 name TEXT,
                 value TEXT
@@ -164,40 +170,42 @@ export class MBTilesOffline extends EventEmitter {
             'INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)'
         );
 
+        const processTile = async (tile: Tile): Promise<void> => {
+            try {
+                // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
+                // compared to the ZXY scheme used by most web maps (like OSM).
+                const tmsY = (1 << tile.z) - 1 - tile.y;
+
+                const existing = check.get(tile.z, tile.x, tmsY)?.tile_data;
+
+                if (existing !== undefined && existing !== null) {
+                    this.emit('progress', ++progress);
+                    return;
+                }
+
+                let data = await this.downloadTile(tile);
+
+                if (data && this.clip) {
+                    data = await this.clipTile(tile, data);
+                }
+
+                if (data) {
+                    stmt.run(tile.z, tile.x, tmsY, data);
+                    this.emit('progress', ++progress);
+                } else {
+                    this.emit('progress', ++progress);
+                    throw new Error('Failed to download data for tile: ' + JSON.stringify(tile));
+                }
+            } catch (err) {
+                this.emit('error', err);
+            }
+        };
+
         for (let zoom = this.minzoom; zoom <= this.maxzoom; zoom++) {
             await PromisePool
                 .withConcurrency(this.concurrency)
                 .for(this.coverage(zoom, this.bounds))
-                .process(async (tile) => {
-                    try {
-                        // MBTiles spec uses TMS tiling scheme, which has a flipped Y-axis
-                        // compared to the ZXY scheme used by most web maps (like OSM).
-                        const tmsY = (1 << tile.z) - 1 - tile.y;
-
-                        const checkResult = check.get(tile.z, tile.x, tmsY);
-
-                        if (checkResult && checkResult.tile_data) {
-                            this.emit('progress', ++progress);
-                            return;
-                        }
-
-                        let data = await this.downloadTile(tile);
-
-                        if (data && this.clip) {
-                            data = await this.clipTile(tile, data);
-                        }
-
-                        if (data) {
-                            stmt.run(tile.z, tile.x, tmsY, data);
-                            this.emit('progress', ++progress);
-                        } else {
-                            this.emit('progress', ++progress);
-                            throw new Error('Failed to download data for tile: ' + JSON.stringify(tile));
-                        }
-                    } catch (err) {
-                        this.emit('error', err);
-                    }
-                });
+                .process(processTile);
         }
 
         db.close();
@@ -248,7 +256,7 @@ export class MBTilesOffline extends EventEmitter {
         const rect = this.clipRect(tile, this.bounds, size);
 
         if (!rect) {
-            return await sharp({
+            return sharp({
                 create: {
                     width: size,
                     height: meta.height,
@@ -262,7 +270,7 @@ export class MBTilesOffline extends EventEmitter {
             return data;
         }
 
-        return await image
+        return image
             .ensureAlpha()
             .extract(rect)
             .extend({

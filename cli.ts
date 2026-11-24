@@ -4,135 +4,121 @@ import { input, number } from '@inquirer/prompts';
 import minimist from 'minimist';
 
 const args = minimist(process.argv.slice(2));
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const config: any = { ...args };
 
-if (!config.name) {
-    config.name = await input({
-        message: 'Name:',
-        default: 'External Imagery'
-    });
+function arg(name: string): string | undefined {
+    const value: unknown = args[name];
+    if (typeof value === 'string' && value !== '') return value;
+    if (typeof value === 'number') return String(value);
+    return undefined;
 }
 
-if (!config.description) {
-    config.description = await input({
-        message: 'Description:',
-        default: 'Downloaded with mbtiles-offline'
-    });
-}
-
-if (!config.version) {
-    config.version = await input({
-        message: 'Version:',
-        default: '1.0.0'
-    });
-}
-
-if (!config.url) {
-    config.url = await input({
-        message: 'Tile URL Template:',
-        validate: (input: string) => {
-            try {
-                validateUrl(input);
-                return true;
-            } catch (err) {
-                return (err as Error).message;
-            }
-        }
-    });
-} else {
+function urlError(url: string): string | undefined {
     try {
-        validateUrl(String(config.url));
+        validateUrl(url);
+        return undefined;
     } catch (err) {
-        console.error(`Error: ${(err as Error).message}`);
-        process.exit(1);
+        return err instanceof Error ? err.message : String(err);
     }
 }
 
-if (!config.output) {
-    config.output = await input({
-        message: 'Output file:',
-        default: 'tiles.mbtiles'
-    });
+function parseBounds(value: string): number[] {
+    return value.split(',').map((p) => (p.trim() === '' ? Number.NaN : Number(p)));
 }
 
-if (!config.minzoom) {
-    config.minzoom = await number({
-        message: 'Min Zoom:',
-        default: 0
-    });
+function isBounds(parts: number[]): parts is [number, number, number, number] {
+    return parts.length === 4 && !parts.some((p) => Number.isNaN(p));
 }
 
-if (!config.maxzoom) {
-    config.maxzoom = await number({
-        message: 'Max Zoom:',
-        default: 14
-    });
-}
-
-if (!config.bounds) {
-    config.bounds = await input({
-        message: 'Bounds (minx, miny, maxx, maxy):',
-        validate: (input: string) => {
-            const parts = input.split(',').map((p) => parseFloat(p.trim()));
-            if (parts.length !== 4 || parts.some(isNaN)) {
-                return 'Bounds must be 4 comma-separated numbers';
-            }
-            return true;
-        }
-    });
-}
-
-if (!config.concurrency) {
-    config.concurrency = await number({
-        message: 'Concurrency:',
-        default: 100
-    });
-}
-
-// Parse bounds if it's a string (from CLI or Inquirer string input)
-if (typeof config.bounds === 'string') {
-    config.bounds = config.bounds.split(',').map((p: string) => parseFloat(p.trim()));
-}
-
-if (!Array.isArray(config.bounds) || config.bounds.length !== 4 || config.bounds.some(isNaN)) {
-    console.error('Error: Bounds must be an array of 4 numbers [minx, miny, maxx, maxy]');
+function fail(message: string): never {
+    console.error(`Error: ${message}`);
     process.exit(1);
 }
 
-const download = new MBTilesOffline({
-    name: config.name,
-    description: config.description,
-    version: config.version,
-    bounds: config.bounds as [number, number, number, number],
-    url: config.url,
-    minzoom: Number(config.minzoom),
-    maxzoom: Number(config.maxzoom),
-    output: config.output,
-    concurrency: Number(config.concurrency),
-    clip: config.clip !== false
+const name = arg('name') ?? await input({
+    message: 'Name:',
+    default: 'External Imagery'
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let progressBar: any;
-let currentTotal: number;
-let currentProgress: number;
-download.on('total', (total) => {
+const description = arg('description') ?? await input({
+    message: 'Description:',
+    default: 'Downloaded with mbtiles-offline'
+});
+
+const version = arg('version') ?? await input({
+    message: 'Version:',
+    default: '1.0.0'
+});
+
+let url = arg('url');
+if (url === undefined) {
+    url = await input({
+        message: 'Tile URL Template:',
+        validate: (value: string) => urlError(value) ?? true
+    });
+} else {
+    const error = urlError(url);
+    if (error !== undefined) fail(error);
+}
+
+const output = arg('output') ?? await input({
+    message: 'Output file:',
+    default: 'tiles.mbtiles'
+});
+
+const minzoom = Number(arg('minzoom') ?? await number({
+    message: 'Min Zoom:',
+    default: 0
+}));
+
+const maxzoom = Number(arg('maxzoom') ?? await number({
+    message: 'Max Zoom:',
+    default: 14
+}));
+
+const bounds = parseBounds(arg('bounds') ?? await input({
+    message: 'Bounds (minx, miny, maxx, maxy):',
+    validate: (value: string) => isBounds(parseBounds(value)) || 'Bounds must be 4 comma-separated numbers'
+}));
+
+const concurrency = Number(arg('concurrency') ?? await number({
+    message: 'Concurrency:',
+    default: 100
+}));
+
+if (!isBounds(bounds)) {
+    fail('Bounds must be an array of 4 numbers [minx, miny, maxx, maxy]');
+}
+
+const download = new MBTilesOffline({
+    name,
+    description,
+    version,
+    bounds,
+    url,
+    minzoom,
+    maxzoom,
+    output,
+    concurrency,
+    clip: args.clip !== false
+});
+
+let progressBar: ReturnType<typeof Progress.create> | undefined;
+let currentTotal = 0;
+download.on('total', (total: number) => {
     currentTotal = total;
     progressBar = Progress.create({
         total,
         pattern: 'Progress: {bar} | Remaining: {remaining} | {percent} | {current}/{total}',
-        updateFrequency: 1,
+        updateFrequency: 1
     });
-}).on('progress', (progress) => {
-    currentProgress = progress;
-    progressBar.update();
+}).on('progress', (progress: number) => {
+    progressBar?.update();
 
-    if (currentProgress === currentTotal) {
-        progressBar.done();
+    if (progress === currentTotal) {
+        progressBar?.done();
         console.error('done');
     }
-}).on('error', (err) => {
+}).on('error', (err: unknown) => {
     console.error('Error:', err);
 });
 
